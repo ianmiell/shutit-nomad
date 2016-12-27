@@ -190,10 +190,36 @@ client {
 }
 ''')
 		shutit.send('nohup nomad agent -client -config client.hcl &')
-		shutit.pause_point('client ok?')
 		shutit.logout()
 		shutit.logout()
 
+		shutit.login(command='vagrant ssh nomad3')
+		shutit.login(command='sudo su -',password='vagrant')
+		shutit.send_file('client.hcl','''# Increase log verbosity
+log_level = "DEBUG"
+
+# Setup data dir
+data_dir = "/tmp/client1"
+
+# Enable the client
+client {
+    enabled = true
+
+    # For demo assume we are talking to server1. For production,
+    # this should be like "nomad.service.consul:4647" and a system
+    # like Consul used for service discovery.
+    servers = ["nomad1.vagrant.test:4647"]
+}
+''')
+		shutit.send('nohup nomad agent -client -config client.hcl &')
+		shutit.logout()
+		shutit.logout()
+
+		shutit.login(command='vagrant ssh nomad1')
+		shutit.login(command='sudo su -',password='vagrant')
+		shutit.send('clients?')
+		shutit.logout()
+		shutit.logout()
 
 		shutit.log('''Vagrantfile created in: ''' + shutit.cfg[self.module_id]['vagrant_run_dir'] + '/' + module_name,add_final_message=True,level=logging.DEBUG)
 		shutit.log('''Run:
