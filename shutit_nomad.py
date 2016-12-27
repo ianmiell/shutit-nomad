@@ -105,17 +105,55 @@ end''')
 			#     https://github.com/hashicorp/nomad/pull/2122
 			shutit.send('''sed -i -e "s/.*nomad.*/$(ip route get 1 | awk '{print $NF;exit}') nomad/" /etc/hosts''')
 			shutit.install('unzip')
+			# nomad
 			shutit.send('wget https://releases.hashicorp.com/nomad/0.5.2/nomad_0.5.2_linux_amd64.zip')
 			shutit.send('unzip nomad_0.5.2_linux_amd64.zip')
 			shutit.send('mv nomad /usr/local/bin')
 			shutit.send('rm -rf nomad*')
 			# Set up needed directories
 			shutit.send('mkdir -p /opt/nomad/{alloc,client,state}')
+			# consul
+			shutit.send('wget https://releases.hashicorp.com/consul/0.7.2/consul_0.7.2_linux_amd64.zip')
+			shutit.send('unzip consul_0.7.2_linux_amd64.zip')
+			shutit.send('mv consul /usr/local/bin')
+			shutit.send('rm -rf consul*')
 			shutit.logout()
 			shutit.logout()
-		shutit.login(command='vagrant ssh ' + sorted(machines.keys())[0])
+		# Set up consul cluster
+		shutit.login(command='vagrant ssh nomad1')
 		shutit.login(command='sudo su -',password='vagrant')
-		TODO: add in client as well?
+		shutit.send('mkdir -p /etc/consul.d')
+		shutit.send('''nohup consul agent -server -bootstrap-expect=1 -data-dir=/tmp/consul -node=nomad1.vagrant.test -bind=''' + machines['nomad1']['ip'] + ''' -config-dir=/etc/consul.d &''')
+		shutit.logout()
+		shutit.logout()
+
+		shutit.login(command='vagrant ssh nomad2')
+		shutit.login(command='sudo su -',password='vagrant')
+		shutit.send('mkdir -p /etc/consul.d')
+		shutit.send('''nohup consul agent -data-dir=/tmp/consul -node=nomad2.vagrant.test -bind=''' + machines['nomad2']['ip'] + ''' -config-dir=/etc/consul.d &''')
+		shutit.logout()
+		shutit.logout()
+
+		shutit.login(command='vagrant ssh nomad3')
+		shutit.login(command='sudo su -',password='vagrant')
+		shutit.send('mkdir -p /etc/consul.d')
+		shutit.send('''nohup consul agent -data-dir=/tmp/consul -node=nomad3.vagrant.test -bind=''' + machines['nomad3']['ip'] + ''' -config-dir=/etc/consul.d &''')
+		shutit.logout()
+		shutit.logout()
+
+
+		shutit.login(command='vagrant ssh nomad1')
+		shutit.login(command='sudo su -',password='vagrant')
+		shutit.send('consul join ' + machines['nomad2']['ip'])
+		shutit.send('consul join ' + machines['nomad3']['ip'])
+		shutit.logout()
+		shutit.logout()
+
+
+		# REMOVE?
+		shutit.login(command='vagrant ssh nomad1')
+		shutit.login(command='sudo su -',password='vagrant')
+
 		shutit.send_file('/root/server.hcl','''# Increase log verbosity
 log_level = "DEBUG"
 
@@ -127,32 +165,36 @@ server {
     enabled = true
 
     # Self-elect, should be 3 or 5 for production
-    bootstrap_expect = 3
-    retry_join = ["''' + machines['nomad1']['ip'] + ''':4648"]
+    bootstrap_expect = 1
 }''')
 		shutit.send('nohup nomad agent -config server.hcl &')
 		shutit.logout()
 		shutit.logout()
 		
-		shutit.login(command='vagrant ssh ' + sorted(machines.keys())[1])
+		shutit.login(command='vagrant ssh nomad2')
 		shutit.login(command='sudo su -',password='vagrant')
-		TODO: add in server as well?
-		shutit.send_file('client.hcl','''client {
-  enabled = true
-  servers = ["172.28.128.26:4647"]
-  alloc_dir = "/opt/nomad/alloc"
-  state_dir = "/opt/nomad/state"
-}''')
-		shutit.send('nomad agent -client -config client.hcl')
+		shutit.send_file('client.hcl','''# Increase log verbosity
+log_level = "DEBUG"
+
+# Setup data dir
+data_dir = "/tmp/client1"
+
+# Enable the client
+client {
+    enabled = true
+
+    # For demo assume we are talking to server1. For production,
+    # this should be like "nomad.service.consul:4647" and a system
+    # like Consul used for service discovery.
+    servers = ["nomad1.vagrant.test:4647"]
+}
+''')
+		shutit.send('nohup nomad agent -client -config client.hcl &')
+		shutit.pause_point('client ok?')
 		shutit.logout()
 		shutit.logout()
 
 
-		# TODO: as above?
-		shutit.login(command='vagrant ssh ' + sorted(machines.keys())[2])
-		shutit.login(command='sudo su -',password='vagrant')
-		shutit.logout()
-		shutit.logout()
 		shutit.log('''Vagrantfile created in: ''' + shutit.cfg[self.module_id]['vagrant_run_dir'] + '/' + module_name,add_final_message=True,level=logging.DEBUG)
 		shutit.log('''Run:
 
