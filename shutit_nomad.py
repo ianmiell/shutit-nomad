@@ -167,7 +167,7 @@ server {
     # Self-elect, should be 3 or 5 for production
     bootstrap_expect = 1
 }''')
-		shutit.send('nohup nomad agent -config server.hcl &')
+		shutit.send('nohup nomad agent -bind=' + machines['nomad1']['ip'] + ' -config server.hcl &')
 		shutit.logout()
 		shutit.logout()
 		
@@ -189,7 +189,7 @@ client {
     servers = ["nomad1.vagrant.test:4647"]
 }
 ''')
-		shutit.send('nohup nomad agent -client -config client.hcl &')
+		shutit.send('nohup nomad agent -bind=' + machines['nomad2']['ip'] + ' -client -config client.hcl &')
 		shutit.logout()
 		shutit.logout()
 
@@ -211,13 +211,14 @@ client {
     servers = ["nomad1.vagrant.test:4647"]
 }
 ''')
-		shutit.send('nohup nomad agent -client -config client.hcl &')
+		shutit.send('nohup nomad agent -bind=' + machines['nomad3']['ip'] + ' -client -config client.hcl &')
 		shutit.logout()
 		shutit.logout()
 
 		shutit.login(command='vagrant ssh nomad1')
 		shutit.login(command='sudo su -',password='vagrant')
-		shutit.send('clients?')
+		shutit.send('nomad node-status',note='Get the node status')
+		shutit.pause_point('')
 		shutit.logout()
 		shutit.logout()
 
